@@ -1,0 +1,14 @@
+.*.sw?
+.idea
+terragrunt.iml
+vendor
+**/.terraform/*
+.vscode
+*.tfstate
+*.tfstate.*
+*.out
+**/.terragrunt-cache/*
+.bundle
+.ruby-version
+terragrunt
+.DS_Store

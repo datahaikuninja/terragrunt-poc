@@ -12,3 +12,5 @@ vendor
 .ruby-version
 terragrunt
 .DS_Store
+**/backend.tf
+**/provider.tf

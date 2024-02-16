@@ -115,7 +115,7 @@ jobs:
       #   key: |
       #     - 
       - name: Setup tflint
-        uses: terraform-linters/setup-tflint@v3
+        uses: terraform-linters/setup-tflint@v4
         with:
           tflint_version: ${{ env.TF_LINT_VER }}
       - name: Init tflint

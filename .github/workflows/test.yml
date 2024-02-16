@@ -125,8 +125,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Run tflint
         run: |
-          # TODO: change to --format checkstyle to pipe reviewdog
-          tflint --format default --recursive
+          tflint --format default --recursive # TODO: change to --format checkstyle to pipe reviewdog
 
   trivy:
     needs: check-child-modules-have-changed

@@ -125,7 +125,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Run tflint
         run: |
-          tflint --format compact --recursive
+          tflint --format checkstyle --recursive
 
   trivy:
     needs: check-child-modules-have-changed

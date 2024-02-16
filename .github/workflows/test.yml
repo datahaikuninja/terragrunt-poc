@@ -7,7 +7,7 @@ on:
         #- staging
         #- production
     types:
-      - opend
+      - opened
       - synchronize
 
 env:
@@ -18,13 +18,13 @@ env:
 jobs:
   check-child-modules-have-changed:
     runs-on: ubuntu-latest
-    permission:
+    permissions:
       contents: read
     defaults:
       run:
         shell: bash -euo pipefail {0}
     outputs:
-      child_module_changed: ${{ steps.paths-filter.outputs.child_module_changed }}
+      child_module_changed: ${{ steps.set-job-output.outputs.child_module_changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,19 +36,20 @@ jobs:
             modules:
               - "modules/**"
       - name: Set job output
-        if: step.path-filter.outputs.modules == "true"
+        if: steps.path-filter.outputs.modules == 'true'
+        id: set-job-output
         run: |
           echo "child_module_changed=true" >> "$GITHUB_OUTPUT"
 
   check-root-modules-have-changed:
     runs-on: ubuntu-latest
-    permission:
+    permissions:
       contents: read
     defaults:
       run:
         shell: bash -euo pipefail {0}
     outputs:
-      root_module_changed: ${{ steps.paths-filter.outputs.root_module_changed }}
+      root_module_changed: ${{ steps.set-job-output.outputs.root_module_changed }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,17 +61,18 @@ jobs:
             modules:
               - "env/**"
       - name: Set job output
-        if: step.path-filter.outputs.modules == "true"
+        if: steps.path-filter.outputs.modules == 'true'
+        id: set-job-output
         run: |
           echo "root_module_changed=true" >> "$GITHUB_OUTPUT"
 
   terraform-fmt:
     needs: check-child-modules-have-changed
-    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
+    if: needs.check-child-modules-have-changed.outputs.child_module_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-request: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ./modules
@@ -93,11 +95,11 @@ jobs:
 
   tflint:
     needs: check-child-modules-have-changed
-    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
+    if: needs.check-child-modules-have-changed.outputs.child_module_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-request: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ./modules
@@ -127,11 +129,11 @@ jobs:
 
   trivy:
     needs: check-child-modules-have-changed
-    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
+    if: needs.check-child-modules-have-changed.outputs.child_module_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-request: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ./modules
@@ -157,11 +159,11 @@ jobs:
 
   terragrunt-hclfmt:
     needs: check-root-modules-have-changed
-    if: {{ needs.check-root-modules-have-changed.outputs.root_module_changed == 'true' }}
+    if: needs.check-root-modules-have-changed.outputs.root_module_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-request: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ./env
@@ -179,7 +181,7 @@ jobs:
 
             #  terragrunt-run-all-plan:
             #    needs: [check-child-modules-have-changed, check-root-modules-have-changed]
-            #    if:  {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' || needs.check-root-modules-have-changed.outputs.root_module_changed == 'true' }}
+            #    if: needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' || needs.check-root-modules-have-changed.outputs.root_module_changed == 'true'
             #    runs-on: ubuntu-latest
             #    permissions:
             #      contents: read
@@ -192,19 +194,19 @@ jobs:
             #      - name: Checkout
             #        uses: actions/checkout@v4
             #      - name: Set environment variables for devi
-            #        if: {{ github.base_ref == 'main' }}
+            #        if: github.base_ref == 'main'
             #        run: |
             #          echo "TG_DIR=./env/dev" >> $GITHUB_ENV
             #          echo "PROJECT_ID=" >> $GITHUB_ENV
             #          echo "WORKLOAD_IDENTITY_PROVIDER=" >> $GITHUB_ENV
             #      - name: Set environment variables for stag
-            #        if: {{ github.base_ref == 'staging' }}
+            #        if: github.base_ref == 'staging'
             #        run: |
             #          echo "TG_DIR=./env/stg" >> $GITHUB_ENV
             #          echo "PROJECT_ID=" >> $GITHUB_ENV
             #          echo "WORKLOAD_IDENTITY_PROVIDER=" >> $GITHUB_ENV
             #      - name: Set environment variables for prod
-            #        if: {{ github.base_ref == 'production' }}
+            #        if: github.base_ref == 'production'
             #        run: |
             #          echo "TG_DIR=./env/prd" >> $GITHUB_ENV
             #          echo "PROJECT_ID=" >> $GITHUB_ENV

@@ -1,29 +1,223 @@
-name: test terragurnt action
+name: Test Terraform configuration files
 
-on: workflow_dispatch
-  #  pull_request:
-  #    branches:
-  #      - main
-  #    types:
-  #      - open
+on:
+  pull_request:
+    branches:
+      - main
+        #- staging
+        #- production
+    types:
+      - opend
+      - synchronize
 
-defaults:
-  run:
-    shell: bash -euo pipefail {0}
+env:
+  TF_VER: "1.6.6"
+  TG_VER: "0.55.0"
+  TF_LINT_VER: "0.50.2"
 
 jobs:
-  test:
+  check-child-modules-have-changed:
+    runs-on: ubuntu-latest
+    permission:
+      contents: read
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    outputs:
+      child_module_changed: ${{ steps.paths-filter.outputs.child_module_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check child modules have changed
+        uses: dorny/paths-filter@v3
+        id: path-filter
+        with:
+          filters: |
+            modules:
+              - "modules/**"
+      - name: Set job output
+        if: step.path-filter.outputs.modules == "true"
+        run: |
+          echo "child_module_changed=true" >> "$GITHUB_OUTPUT"
+
+  check-root-modules-have-changed:
+    runs-on: ubuntu-latest
+    permission:
+      contents: read
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    outputs:
+      root_module_changed: ${{ steps.paths-filter.outputs.root_module_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Check root modules have changed
+        uses: dorny/paths-filter@v3
+        id: path-filter
+        with:
+          filters: |
+            modules:
+              - "env/**"
+      - name: Set job output
+        if: step.path-filter.outputs.modules == "true"
+        run: |
+          echo "root_module_changed=true" >> "$GITHUB_OUTPUT"
+
+  terraform-fmt:
+    needs: check-child-modules-have-changed
+    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
     runs-on: ubuntu-latest
     permissions:
-      id-token: write
       contents: read
+      pull-request: write
+    defaults:
+      run:
+        working-directory: ./modules
+        shell: bash -euo pipefail {0}
     steps:
-      - name: checkout
+      - name: Checkout
         uses: actions/checkout@v4
-      - name: echo GITHUB_WORKSPACE
+      # TODO: cache terraform plugin
+      # name: cache tfsec
+      # uses: actions/cache@v4
+      # path: |
+      # key: |
+      - name: Setup terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VER }}
+      - name: Run terraform fmt
         run: |
-          echo "${{ github.workspace }}"
-      - name: echo rootdir files
+          terraform fmt -check -diff -recursive
+
+  tflint:
+    needs: check-child-modules-have-changed
+    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-request: write
+    defaults:
+      run:
+        working-directory: ./modules
+        shell: bash -euo pipefail {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      # TODO: cache tflint plugin
+      # - name: Cache plugin dir
+      #   uses: actions/cache@v4
+      #   path: |
+      #     - ~/.tflint.d
+      #   key: |
+      #     - 
+      - name: Setup tflint
+        uses: terraform-linters/setup-tflint@v3
+        with:
+          tflint_version: ${{ env.TF_LINT_VER }}
+      - name: Init tflint
         run: |
-          ls -la "${{ github.workspace }}"
-        working-directory: "./env/dev"
+          tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Run tflint
+        run: |
+          tflint --format compact --recursive
+
+  trivy:
+    needs: check-child-modules-have-changed
+    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-request: write
+    defaults:
+      run:
+        working-directory: ./modules
+        shell: bash -euo pipefail {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      # TODO: cache trivy
+      # name: Cache trivy
+      # uses: actions/cache@v4
+      # path: |
+      # key: |
+      - name: Run Trivy vulnerability scanner in IaC mode
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "config"
+          scan-ref: "./modules"
+          hide-progress: false
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: false
+          severity: "CRITICAL,HIGH"
+
+  terragrunt-hclfmt:
+    needs: check-root-modules-have-changed
+    if: {{ needs.check-root-modules-have-changed.outputs.root_module_changed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-request: write
+    defaults:
+      run:
+        working-directory: ./env
+        shell: bash -euo pipefail {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run terragrunt hclfmt
+        uses: gruntwork-io/terragrunt-action@v2
+        with: 
+          tf_version: ${{ env.TF_VER }}
+          tg_version: ${{ env.TG_VER }}
+          tg_dir: ./env
+          tg_command: "hclfmt --terragrunt-check --terragrunt-diff"
+
+            #  terragrunt-run-all-plan:
+            #    needs: [check-child-modules-have-changed, check-root-modules-have-changed]
+            #    if:  {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' || needs.check-root-modules-have-changed.outputs.root_module_changed == 'true' }}
+            #    runs-on: ubuntu-latest
+            #    permissions:
+            #      contents: read
+            #      id-token: write
+            #      pull-request: write
+            #    defaults:
+            #      run:
+            #        shell: bash -euo pipefail {0}
+            #    steps:
+            #      - name: Checkout
+            #        uses: actions/checkout@v4
+            #      - name: Set environment variables for devi
+            #        if: {{ github.base_ref == 'main' }}
+            #        run: |
+            #          echo "TG_DIR=./env/dev" >> $GITHUB_ENV
+            #          echo "PROJECT_ID=" >> $GITHUB_ENV
+            #          echo "WORKLOAD_IDENTITY_PROVIDER=" >> $GITHUB_ENV
+            #      - name: Set environment variables for stag
+            #        if: {{ github.base_ref == 'staging' }}
+            #        run: |
+            #          echo "TG_DIR=./env/stg" >> $GITHUB_ENV
+            #          echo "PROJECT_ID=" >> $GITHUB_ENV
+            #          echo "WORKLOAD_IDENTITY_PROVIDER=" >> $GITHUB_ENV
+            #      - name: Set environment variables for prod
+            #        if: {{ github.base_ref == 'production' }}
+            #        run: |
+            #          echo "TG_DIR=./env/prd" >> $GITHUB_ENV
+            #          echo "PROJECT_ID=" >> $GITHUB_ENV
+            #          echo "WORKLOAD_IDENTITY_PROVIDER=" >> $GITHUB_ENV
+            #      - name: Authenticate to Google Cloud
+            #        uses: google-github-actions/auth@v2
+            #        with:
+            #          project_id: ${{ env.PROJECT_ID }}
+            #          workload_identity_provider: ${{ env.WORKLOAD_IDENTITY_PROVIDER }}
+            #      - name: Run terragrunt run-all plan
+            #        uses: gruntwork-io/terragrunt-action@v2
+            #        with: 
+            #          tf_version: ${{ env.TF_VER }}
+            #          tg_version: ${{ env.TG_VER }}
+            #          tg_dir: ${{ env.TG_DIR }}
+            #          tg_command: "run-all plan"

@@ -141,11 +141,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      # TODO: cache trivy
-      # name: Cache trivy
-      # uses: actions/cache@v4
-      # path: |
-      # key: |
       - name: Run Trivy vulnerability scanner in IaC mode
         uses: aquasecurity/trivy-action@master
         with:

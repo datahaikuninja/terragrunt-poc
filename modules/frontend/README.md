@@ -39,3 +39,6 @@ No modules.
 | <a name="output_public_ip_web"></a> [public\_ip\_web](#output\_public\_ip\_web) | Public IP of the web server |
 | <a name="output_sg_id_web"></a> [sg\_id\_web](#output\_sg\_id\_web) | Security Group ID of the web server |
 <!-- END_TF_DOCS -->
+
+## Note
+aaa

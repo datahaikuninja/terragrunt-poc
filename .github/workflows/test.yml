@@ -7,70 +7,72 @@ on:
         #- staging
         #- production
     types:
-      - opend
+      - opened
       - synchronize
 
 env:
   TF_VER: "1.6.6"
   TG_VER: "0.55.0"
-  TF_LINT_VER: "0.50.2"
+  TF_LINT_VER: "v0.50.2"
 
 jobs:
   check-child-modules-have-changed:
     runs-on: ubuntu-latest
-    permission:
+    permissions:
       contents: read
     defaults:
       run:
         shell: bash -euo pipefail {0}
     outputs:
-      child_module_changed: ${{ steps.paths-filter.outputs.child_module_changed }}
+      #child_module_changed: ${{ steps.set-job-output.outputs.child_module_changed }}
+      child_module_changed: ${{ steps.changed-files.outputs.any_modified }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Check child modules have changed
-        uses: dorny/paths-filter@v3
-        id: path-filter
+      - name: Run changed-files
+        id: changed-files
+        uses: tj-actions/changed-files@v42
         with:
-          filters: |
-            modules:
-              - "modules/**"
-      - name: Set job output
-        if: step.path-filter.outputs.modules == "true"
-        run: |
-          echo "child_module_changed=true" >> "$GITHUB_OUTPUT"
+          files: |
+            modules/**
+      #- name: Set job output
+      #  if: steps.changed-files.outputs.any_modified == 'true'
+      #  id: set-job-output
+      #  run: |
+      #    echo "child_module_changed=true" >> "$GITHUB_OUTPUT"
 
   check-root-modules-have-changed:
     runs-on: ubuntu-latest
-    permission:
+    permissions:
       contents: read
     defaults:
       run:
         shell: bash -euo pipefail {0}
     outputs:
-      root_module_changed: ${{ steps.paths-filter.outputs.root_module_changed }}
+      #root_module_changed: ${{ steps.set-job-output.outputs.root_module_changed }}
+      root_module_changed: ${{ steps.changed-files.outputs.any_modified }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Check root modules have changed
-        uses: dorny/paths-filter@v3
-        id: path-filter
+      - name: Run changed-files
+        id: changed-files
+        uses: tj-actions/changed-files@v42
         with:
-          filters: |
-            modules:
-              - "env/**"
-      - name: Set job output
-        if: step.path-filter.outputs.modules == "true"
-        run: |
-          echo "root_module_changed=true" >> "$GITHUB_OUTPUT"
+          files: |
+            env/**
+      #- name: Set job output
+      #  if: steps.changed-files.outputs.any_modified == 'true'
+      #  id: set-job-output
+      #  run: |
+      #    echo "root_module_changed=true" >> "$GITHUB_OUTPUT"
 
   terraform-fmt:
     needs: check-child-modules-have-changed
-    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
+    if: needs.check-child-modules-have-changed.outputs.child_module_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-request: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ./modules
@@ -93,11 +95,11 @@ jobs:
 
   tflint:
     needs: check-child-modules-have-changed
-    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
+    if: needs.check-child-modules-have-changed.outputs.child_module_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-request: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ./modules
@@ -113,7 +115,7 @@ jobs:
       #   key: |
       #     - 
       - name: Setup tflint
-        uses: terraform-linters/setup-tflint@v3
+        uses: terraform-linters/setup-tflint@v4
         with:
           tflint_version: ${{ env.TF_LINT_VER }}
       - name: Init tflint
@@ -123,15 +125,15 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
       - name: Run tflint
         run: |
-          tflint --format compact --recursive
+          tflint --format default --recursive # TODO: change to --format checkstyle to pipe reviewdog
 
   trivy:
     needs: check-child-modules-have-changed
-    if: {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' }}
+    if: needs.check-child-modules-have-changed.outputs.child_module_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-request: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ./modules
@@ -139,11 +141,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      # TODO: cache trivy
-      # name: Cache trivy
-      # uses: actions/cache@v4
-      # path: |
-      # key: |
       - name: Run Trivy vulnerability scanner in IaC mode
         uses: aquasecurity/trivy-action@master
         with:
@@ -157,11 +154,11 @@ jobs:
 
   terragrunt-hclfmt:
     needs: check-root-modules-have-changed
-    if: {{ needs.check-root-modules-have-changed.outputs.root_module_changed == 'true' }}
+    if: needs.check-root-modules-have-changed.outputs.root_module_changed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-request: write
+      pull-requests: write
     defaults:
       run:
         working-directory: ./env
@@ -179,7 +176,7 @@ jobs:
 
             #  terragrunt-run-all-plan:
             #    needs: [check-child-modules-have-changed, check-root-modules-have-changed]
-            #    if:  {{ needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' || needs.check-root-modules-have-changed.outputs.root_module_changed == 'true' }}
+            #    if: needs.check-child-modules-have-changed.outputs.child_module_changed == 'true' || needs.check-root-modules-have-changed.outputs.root_module_changed == 'true'
             #    runs-on: ubuntu-latest
             #    permissions:
             #      contents: read
@@ -192,19 +189,19 @@ jobs:
             #      - name: Checkout
             #        uses: actions/checkout@v4
             #      - name: Set environment variables for devi
-            #        if: {{ github.base_ref == 'main' }}
+            #        if: github.base_ref == 'main'
             #        run: |
             #          echo "TG_DIR=./env/dev" >> $GITHUB_ENV
             #          echo "PROJECT_ID=" >> $GITHUB_ENV
             #          echo "WORKLOAD_IDENTITY_PROVIDER=" >> $GITHUB_ENV
             #      - name: Set environment variables for stag
-            #        if: {{ github.base_ref == 'staging' }}
+            #        if: github.base_ref == 'staging'
             #        run: |
             #          echo "TG_DIR=./env/stg" >> $GITHUB_ENV
             #          echo "PROJECT_ID=" >> $GITHUB_ENV
             #          echo "WORKLOAD_IDENTITY_PROVIDER=" >> $GITHUB_ENV
             #      - name: Set environment variables for prod
-            #        if: {{ github.base_ref == 'production' }}
+            #        if: github.base_ref == 'production'
             #        run: |
             #          echo "TG_DIR=./env/prd" >> $GITHUB_ENV
             #          echo "PROJECT_ID=" >> $GITHUB_ENV
